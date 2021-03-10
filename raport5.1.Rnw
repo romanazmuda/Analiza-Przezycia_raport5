@@ -1,0 +1,523 @@
+\documentclass[12pt, a4paper]{article}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe pakiety LaTeX'a
+\usepackage[OT4]{polski}
+\usepackage[cp1250]{inputenc}
+\usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage[colorlinks=true, linkcolor=blue]{hyperref}
+\usepackage{anyfontsize}
+\usepackage{bbm}
+\usepackage{amsmath}
+\usepackage{animate}
+\usepackage{Sweave}
+\graphicspath{{inst/extdata/}}
+\DeclareGraphicsExtensions{.pdf,.png}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% dodatkowe definicje œrodowisk
+\newtheorem{theorem}{Twierdzenie}
+\newtheorem{lemma}{Lemat}
+\newtheorem{corollary}{Wniosek}
+\newtheorem{proposition}{Propozycja}
+\newtheorem{remark}{Uwaga}
+\newtheorem{note}{Notka}
+\newtheorem{fact}{Fakt}
+\newtheorem{definition}{Definicja}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% ustawienia globalne
+<<ustawienia_globalne, echo=FALSE>>=
+library(knitr)
+library(latex2exp)
+library(reliaR)
+library(binom)
+library(stats)
+library(NADA)
+library(survival)
+library(survminer)
+library(ggplot2)
+library(xtable) 
+library(dplyr)
+library(stringr)
+library(timereg)
+library(nltm)
+library(magrittr)
+library(data.table)
+opts_chunk$set(fig.path='figure/', fig.align='center', fig.pos='H',fig.width=4, fig.height=3)
+
+@
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% strona tytulowa
+\title{Analiza prze¿ycia\\
+Raport 5\\
+- \\
+Modele proporcjonalnych szans}
+\author{Romana ¯muda}
+\maketitle
+\newpage
+
+\tableofcontents 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\section{Zadanie do sprawozdania - Czêœæ 1}
+\label{s:part1}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Zadanie 1 - Metoda proporcjonalnych szans - wszystkie zmienne}
+W tej czêœci znowu bêdziemy tworzyæ semiparametryczne modele regresji, a dok³adniej model proporcjonalnych szans. Model ten jest czsto przyjmowanym modelem regresji w przypadku, gdy za³o¿enie proporcjonalnoœci hazardów nie jest spe³nione. W statystyce szans¹ nazywamy iloraz prawdopodobieñstwa sukcesu do prawdopodobieñstwa pora¿ki, nale¿y jednak pamiêtaæ, ¿e u nas to prawdopodobieñstwo ma interpretacjê w postaci: "Szansa na œmieræ maj¹c ten parametr wynosi ..."
+
+\newline
+Tak jak w poprzednim raporcie analizie poddamy zbiór danych \textsl{lung}, który dotyczy pacjentów z zaawansowanym rakiem p³uc. . Zbiór zawiera informacje o 228 pacjentach, których zbiór charakterystyk obejmuje 8 nastêpuj¹cych zmiennych:
+\begin{itemize}
+\item \textsl{inst} kod instytucji
+\item \textsl{time} czas prze¿ycia
+\item \textsl{status} cenzura (1. cenzura, 2. œmieræ)
+\item \textsl{age} wiek
+\item \textsl{sex} p³eæ (1. mê¿czyzna, 2. kobieta)
+\item \textsl{ph.ecog} skala sprawnoœci wg. lekarza (0-sprawnoœæ prawid³owa, 5-zgon) 
+\item \textsl{ph.karno} skala sprawnoœci wg. lekarza (sprawnoœæ prawid³owa - 100. zgon - 0)
+\item \textsl{pat.karno} skala sprawnoœæi wg. pacjenta 
+\item \textsl{meal.cal} kalorie na posi³ek
+\item \textsl{wt.loss} utrata masy cia³a w ci¹gu ostatnich 6 miesiêcy
+\end{itemize}
+Do modelu musimy za³o¿yæ, ¿e obserwowalne zmienne losowe maj¹ rozk³ady o ci¹g³ych i ró¿niczkowalnych dystrybuantach, a niektóre zmienne musz¹ byæ zmiennymi factor, nale¿y te¿ dokonaæ centralizacji zmiennych.
+<<wgranie,echo=TRUE,warning=FALSE>>=
+dane<-data.frame(lung)
+dane$status <- as.factor(dane$status)
+dane$ph.ecog <-as.factor(dane$ph.ecog)
+dane$ph.karno <- as.factor(dane$ph.karno)
+dane$sex <- as.factor(dane$sex)
+dane$pat.karno <- as.factor(dane$pat.karno)
+
+dane<-subset(dane, (meal.cal != "NA") & (wt.loss != "NA"))
+
+dane$age <- dane$age - mean(dane$age)
+dane$meal.cal <- dane$meal.cal - mean(dane$meal.cal)
+dane$wt.loss <- dane$wt.loss - mean(dane$wt.loss)
+
+model<-prop.odds(Event(time, status == 2) ~ age + sex + ph.ecog + ph.karno 
+                 + pat.karno + meal.cal + wt.loss, 
+                 data = dane, n.sim = 500, profile = 1)
+model
+@
+Widzimy, ¿e model nie móg³ siê skonwertowaæ, gdy¿ podano do modelu za ma³o iteracji. SprawdŸmy, co siê stanie gdy zwiêkszymy iloœæ iteracji.
+<<badanie,echo=TRUE,warning=FALSE>>=
+model_1<-prop.odds(Event(time, status == 2) ~ age + sex + ph.ecog + ph.karno 
+                 + pat.karno + meal.cal + wt.loss, 
+                 data = dane, n.sim = 5000, profile = 1)
+model_1
+
+model_2<-prop.odds(Event(time, status == 2) ~ age + sex + ph.ecog + ph.karno 
+                 + pat.karno + meal.cal + wt.loss, 
+                 data = dane, n.sim = 10000, profile = 1)
+model_2
+
+@
+Widzimy, ¿e nie ma mo¿liwoœci dopasowania zmiennych do modelu, gdy¿ nawet w du¿ej iloœci iteracji model nie konwertuje siê.
+\subsection{Zadanie 2 - Metoda proporcjonalnych szans bez zmiennych \textsl{age} i \textsl{meal.cal}}
+Model budujemy z pomoc¹ funkcji \textsl{prop.odds}, ale tym razem bez zmiennych \textsl{age} i \textsl{meal.cal}:
+<<modele,echo=TRUE,warning=FALSE>>=
+model_bez<-prop.odds(Event(time, status == 2) ~  sex + ph.ecog 
+                     + ph.karno + pat.karno  + wt.loss, 
+                     data = dane, n.sim = 500, profile = 1)
+model_bez
+@
+Tutaj model konwertuje siê, jednak jest on nieracjonalny, gdy¿ niektóre zmienne charakterystyczne informuj¹ce o hipotetycznie gorszej sytuacji pacjenta zmiejszaj¹ jego szansê na œmieræ, a wiêc na prze¿ycie. Bierze siê to z faktu braku danych.
+
+\subsection{Zadanie 3, 4 - Weryfikacje hipotez do podanych wy¿ej modeli}
+Jako, ¿e nie uda³o siê stworzyæ odpowiednich modeli, nie jesteœmy w stanie przeprowadziæ weryfikacji hipotez podanych w zadaniach.
+\newpage
+\subsection{Zadanie 5 -  Wybór zmiennych do modelu}
+
+\begin{center}
+\textbf{{\large Kryterium informacyjne AIC}}
+\end{center}
+\newline
+Kryterium informacyjne AIC jest metod¹ forward, w skrócie od jednej zmiennej poprzez dodawanie kolejnych zmiennych, a¿ do momentu, gdy wartoœæ AIC dla modelu jest mniejsza ni¿ po dodaniu jakiejkolwiek kolejnej. Najpierw tworzymy krok pierwszy czyli weryfikacja, która zmienna musi byæ w modelu, mamy ich 7.
+\begin{center}
+\textbf{Krok 1}
+\end{center}
+<<krok1,echo=TRUE,warning=FALSE>>=
+model1 <- prop.odds(Event(time, status == 2) ~ age, 
+                    data = dane, n.sim = 500, profile = 1)
+model2 <- prop.odds(Event(time, status == 2) ~ sex, 
+                    data = dane, n.sim = 500, profile = 1)
+model3 <- prop.odds(Event(time, status == 2) ~ ph.ecog,
+                    data = dane, n.sim = 500, profile = 1)
+model4 <- prop.odds(Event(time, status == 2) ~ ph.karno, 
+                    data = dane, n.sim = 500, profile = 1)
+model5 <- prop.odds(Event(time, status == 2) ~ pat.karno,
+                    data = dane, n.sim = 500, profile = 1)
+model6 <- prop.odds(Event(time, status == 2) ~ meal.cal, 
+                    data = dane, n.sim = 500, profile = 1)
+model7 <- prop.odds(Event(time, status == 2) ~ wt.loss, 
+                    data = dane, n.sim = 500, profile = 1)
+
+AIC_model1 <- -2*model1$loglike[1] + 2*1
+AIC_model2 <- -2*model2$loglike[1] + 2*2
+AIC_model3 <- -2*model3$loglike[1] + 2*4
+AIC_model4 <- -2*model4$loglike[1] + 2*6
+AIC_model5 <- -2*model5$loglike[1] + 2*8
+AIC_model6 <- -2*model6$loglike[1] + 2*1
+AIC_model7 <- -2*model7$loglike[1] + 2*1
+@
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ AIC \\ 
+ age &   1053.493    \\
+ sex  &   1052.954    \\
+ ph.ecog  & 1038.088  \\
+ ph.karno  & 1055.103   \\
+ pat.karno  & 1032.985    \\
+ meal.cal & 1057.064    \\  
+ wt.loss & 1058.472    \\
+   \hline
+\end{tabular}
+\end{table}
+Najmniejsza wartoœæ jest w przypadku \textsl{pat.karno} wiêc to j¹ bierzemy do dalszej analizy
+\newpage
+\begin{center}
+\textbf{Krok 2}
+\end{center}
+<<krok2,echo=TRUE,warning=FALSE>>=
+model51 <- prop.odds(Event(time, status == 2) ~ pat.karno + age, 
+                     data = dane, n.sim = 500, profile = 1)
+model52 <- prop.odds(Event(time, status == 2) ~ pat.karno + sex,
+                     data = dane, n.sim = 500, profile = 1)
+model53 <- prop.odds(Event(time, status == 2) ~ pat.karno + ph.ecog, 
+                     data = dane, n.sim = 500, profile = 1)
+model54 <- prop.odds(Event(time, status == 2) ~ pat.karno + ph.karno, 
+                     data = dane, n.sim = 500, profile = 1)
+model56 <- prop.odds(Event(time, status == 2) ~ pat.karno + meal.cal,
+                     data = dane, n.sim = 500, profile = 1)
+model57 <- prop.odds(Event(time, status == 2) ~ pat.karno + wt.loss, 
+                     data = dane, n.sim = 500, profile = 1)
+
+AIC_model51 <- -2*model51$loglike[1] + 2*9
+AIC_model52 <- -2*model52$loglike[1] + 2*10
+AIC_model53 <- -2*model53$loglike[1] + 2*12
+AIC_model54 <- -2*model54$loglike[1] + 2*14
+AIC_model56 <- -2*model56$loglike[1] + 2*9
+AIC_model57 <- -2*model57$loglike[1] + 2*9
+@
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ AIC \\ 
+ age + pat.karno &   1033.786   \\
+ sex + pat.karno &   1029.641    \\
+ ph.ecog + pat.karno & 1024.591   \\
+ ph.karno + pat.karno & 1040.814 \\
+ meal.cal + pat.karno & 1038.571   \\  
+ wt.loss + pat.karno & 1034.978    \\
+   \hline
+\end{tabular}
+\end{table}
+Najmniejsza wartoœæ jest dla zmiennych  \textsl{ph.ecog} oraz \textsl{pat.karno}. Sprawdzamy, czy trzeba dodaæ jeszcze jak¹œ zmienn¹.
+\newline
+\begin{center}
+\textbf{Krok 3}
+\end{center}
+<<krok3,echo=TRUE,warning=FALSE>>=
+model531 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                      + ph.ecog + age, data = dane, 
+                      n.sim = 500, profile = 1)
+model532 <- prop.odds(Event(time, status == 2) ~ pat.karno
+                      + ph.ecog + sex, data = dane, 
+                      n.sim = 500, profile = 1)
+model534 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                      + ph.ecog + ph.karno, data = dane, 
+                      n.sim = 500, profile = 1)
+model536 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                      + ph.ecog + meal.cal, data = dane,
+                      n.sim = 500, profile = 1)
+model537 <- prop.odds(Event(time, status == 2) ~ pat.karno
+                      + ph.ecog + wt.loss, data = dane, 
+                      n.sim = 500, profile = 1)
+
+AIC_model531 <- -2*model531$loglike[1] + 2*13
+AIC_model532 <- -2*model532$loglike[1] + 2*14
+AIC_model534 <- -2*model534$loglike[1] + 2*19
+AIC_model536 <- -2*model536$loglike[1] + 2*13
+AIC_model537 <- -2*model537$loglike[1] + 2*13
+@
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ AIC \\ 
+ age + pat.karno + ph.ecog &   1026.188  \\
+ sex + pat.karno + ph.ecog &   1018.58  \\
+ ph.karno + pat.karno + ph.ecog & 1037.034 \\
+ meal.cal + pat.karno + ph.ecog  & 1031.709  \\  
+ wt.loss + pat.karno + ph.ecog & 1026.444  \\
+   \hline
+\end{tabular}
+\end{table}
+\newline
+Widzimy, ¿e do modelu dodajemy jeszcze zmienn¹ \textsl{sex}.
+\begin{center}
+\textbf{Krok 4}
+\end{center}
+<<krok4,echo=TRUE,warning=FALSE>>=
+model5321 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                       + ph.ecog + sex + age, data = dane, 
+                      n.sim = 500, profile = 1)
+model5324 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                       + ph.ecog + sex + ph.karno, data = dane, 
+                      n.sim = 500, profile = 1)
+model5326 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                       + ph.ecog + sex + meal.cal, data = dane,
+                      n.sim = 500, profile = 1)
+model5327 <- prop.odds(Event(time, status == 2) ~ pat.karno 
+                       + ph.ecog + sex + wt.loss, data = dane, 
+                      n.sim = 500, profile = 1)
+
+AIC_model5321 <- -2*model5321$loglike[1] + 2*15
+AIC_model5324 <- -2*model5324$loglike[1] + 2*21
+AIC_model5326 <- -2*model5326$loglike[1] + 2*15
+AIC_model5327 <- -2*model5327$loglike[1] + 2*15
+@
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ AIC \\ 
+ age + pat.karno + ph.ecog + sex &   1020.492 \\
+ ph.karno + pat.karno + ph.ecog + sex  &  1031.4 \\
+ meal.cal + pat.karno + ph.ecog + sex  & 1028.326   \\  
+ wt.loss + pat.karno + ph.ecog + sex  &  1019.838  \\
+   \hline
+\end{tabular}
+\end{table}
+Najmniejsz¹ wartoœci¹ jest dodaj¹c zmienn¹ \textsl{wt.loss}, jednak przypomnijmy sobie ile wynosi³a wartoœæ AIC, bez tej zmiennej:
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ AIC \\ 
+ pat.karno + ph.ecog + sex  &  1018.58    \\  
+ pat.karno + ph.ecog + sex + wt.loss & 1019.838   \\
+   \hline
+\end{tabular}
+\end{table}
+\newline
+\newline
+Widzimy, ¿e bez tej zmiennej model jest lepszy ostateczny model zbudujemy na: 
+\begin{itemize}
+\item \textsl{sex}
+\item \textsl{pat.karno}
+\item \textsl{ph.ecog}
+\end{itemize}
+
+
+
+\begin{center}
+\textbf{{\large Kryterium BIC}}
+\end{center}
+\newline
+
+Kryterium BIC jest metod¹ pdobn¹ do kryterium AIC, w skrócie od jednej zmiennej poprzez dodawanie kolejnych zmiennych, a¿ do momentu, gdy wartoœæ BIC dla modelu jest mniejsza ni¿ po dodaniu jakiejkolwiek kolejnej. Najpierw tworzymy krok pierwszy czyli weryfikacja, która zmienna musi byæ w modelu, mamy ich 7.
+\begin{center}
+\textbf{Krok 1}
+\end{center}
+<<krok1.1,echo=TRUE,warning=FALSE>>=
+
+model1 <- prop.odds(Event(time, status==2)~age, 
+                    data=dane, n.sim=500, profile=1)
+model2 <- prop.odds(Event(time, status==2)~sex, 
+                    data=dane, n.sim=500, profile=1)
+model3 <- prop.odds(Event(time, status==2)~ph.ecog, 
+                    data=dane, n.sim=500, profile=1)
+model4 <- prop.odds(Event(time, status==2)~ph.karno, 
+                    data=dane, n.sim=500, profile=1)
+model5 <- prop.odds(Event(time, status==2)~pat.karno, 
+                    data=dane, n.sim=500, profile=1)
+model6 <- prop.odds(Event(time, status==2)~wt.loss, 
+                    data=dane, n.sim=500, profile=1)
+model7 <- prop.odds(Event(time, status==2)~meal.cal, 
+                    data=dane, n.sim=500, profile=1)
+
+n <- nrow(dane)
+
+BIC_model1 <- -2*model1$loglike[1] + log(n)*1
+BIC_model2 <- -2*model2$loglike[1] + log(n)*2
+BIC_model3 <- -2*model3$loglike[1] + log(n)*4
+BIC_model4 <- -2*model4$loglike[1] + log(n)*6
+BIC_model5 <- -2*model5$loglike[1] + log(n)*8
+BIC_model6 <- -2*model6$loglike[1] + log(n)*1
+BIC_model7 <- -2*model7$loglike[1] + log(n)*1
+
+@
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ BIC \\ 
+ age &   1050.685   \\
+ sex  &  1059.237  \\
+ ph.ecog  & 1045.543   \\
+ ph.karno  & 1073.924   \\
+ pat.karno  & 1058.133   \\
+ wt.loss & 1061.614    \\  
+ meal.cal & 1060.208    \\
+   \hline
+\end{tabular}
+\end{table}
+Najmniejsza wartoœæ jest w przypadku \textsl{ph.ecog} wiêc to j¹ bierzemy do dalszej analizy
+\newpage
+\begin{center}
+\textbf{Krok 2}
+\end{center}
+<<krok1.2,echo=TRUE,warning=FALSE>>=
+model31 <- prop.odds(Event(time, status==2)~ph.ecog + age,
+                      data=dane, n.sim=500, profile=1)
+model32 <- prop.odds(Event(time, status==2)~ph.ecog + sex, 
+                      data=dane, n.sim=500, profile=1)
+model34 <- prop.odds(Event(time, status==2)~ph.ecog + ph.karno, 
+                      data=dane, n.sim=500, profile=1)
+model35 <- prop.odds(Event(time, status==2)~ph.ecog + pat.karno, 
+                      data=dane, n.sim=500, profile=1)
+model36 <- prop.odds(Event(time, status==2)~ph.ecog + wt.loss, 
+                      data=dane, n.sim=500, profile=1)
+model37 <- prop.odds(Event(time, status==2)~ph.ecog + meal.cal,
+                      data=dane, n.sim=500, profile=1)
+
+BIC_model31 <- -2*model51$loglike[1] + log(n)*5
+BIC_model32 <- -2*model52$loglike[1] + log(n)*6
+BIC_model34 <- -2*model53$loglike[1] + log(n)*10
+BIC_model35 <- -2*model54$loglike[1] + log(n)*12
+BIC_model36 <- -2*model56$loglike[1] + log(n)*5
+BIC_model37 <- -2*model57$loglike[1] + log(n)*5
+@
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ BIC \\ 
+ age + ph.ecog &   1041.513  \\
+ sex + ph.ecog &   1040.501   \\
+ ph.karno + ph.ecog & 1052.007  \\
+ pat.karno + ph.ecog & 1074.514  \\
+ wt.loss + ph.ecog & 1046.28   \\  
+ meal.cal + ph.ecog & 1042.686   \\
+   \hline
+\end{tabular}
+\end{table}
+Najmniejsza wartoœæ jest dla zmiennych  \textsl{ph.ecog} oraz \textsl{sex}. Sprawdzamy, czy trzeba dodaæ jeszcze jak¹œ zmienn¹.
+\newline
+\begin{center}
+\textbf{Krok 3}
+\end{center}
+<<krok1.3,echo=TRUE,warning=FALSE>>=
+model3.2.1 <- prop.odds(Event(time, status==2)~ph.ecog + sex + age
+                        , data=dane, n.sim=500, profile=1)
+model3.2.4 <- prop.odds(Event(time, status==2)~ph.ecog + sex + ph.karno
+                        , data=dane, n.sim=500, profile=1)
+model3.2.5 <- prop.odds(Event(time, status==2)~ph.ecog + sex + pat.karno
+                        , data=dane, n.sim=500, profile=1)
+model3.2.6 <- prop.odds(Event(time, status==2)~ph.ecog + sex + wt.loss,
+                        data=dane, n.sim=500, profile=1)
+model3.2.7 <- prop.odds(Event(time, status==2)~ph.ecog + sex + meal.cal,
+                        data=dane, n.sim=500, profile=1)
+
+BIC_model3.2.1 <- -2*model3.2.1$loglike[1] + log(n)*7
+BIC_model3.2.4 <- -2*model3.2.4$loglike[1] + log(n)*12
+BIC_model3.2.5 <- -2*model3.2.5$loglike[1] + log(n)*14
+BIC_model3.2.6 <- -2*model3.2.6$loglike[1] + log(n)*7
+BIC_model3.2.7 <- -2*model3.2.7$loglike[1] + log(n)*7
+@
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ BIC \\ 
+ age + sex + ph.ecog &   1055.332  \\
+ ph.karno + sex + ph.ecog &   1079.888   \\
+ pat.karno + sex + ph.ecog & 1062.563 \\
+ wt.loss  + sex+ ph.ecog  & 1054.659   \\  
+ meal.cal+ sex + ph.ecog & 1061.12  \\
+   \hline
+\end{tabular}
+\end{table}
+
+
+\newline
+Najmniejsz¹ wartoœci¹ jest dodaj¹c zmienn¹ \textsl{wt.loss}, jednak przypomnijmy sobie ile wynosi³a wartoœæ AIC, bez tej zmiennej:
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ Zmienna  &  Wartoœæ BIC \\ 
+  ph.ecog + sex  & 1040.501   \\  
+  ph.ecog + sex + wt.loss & 1054.659 \\
+   \hline
+\end{tabular}
+\end{table}
+\newline
+\newline
+Widzimy, ¿e bez tej zmiennej model jest lepszy ostateczny model zbudujemy na: 
+\begin{itemize}
+\item \textsl{sex}
+\item \textsl{ph.ecog}
+\end{itemize}
+
+
+\newpage
+\subsection{Zadanie 6 -  funkcja prze¿ycia modelu z kryterium AIC}
+Na rysunku poni¿ej \ref{F:przezycie} umieœci³am wykres funkcji prze¿ycia przy wartoœciach :
+\begin{itemize}
+\item $\textsl{sex} = 2$
+\item $\textsl{ph.ecog} = 2$
+\item $\textsl{pat.karno} = 50$
+\end{itemize}
+<<wykres,echo=TRUE,warning=FALSE>>=
+lung<-data.frame(lung)
+lung %<>% as.data.table()
+lung<-lung[, `:=`(sex = as.factor(sex), 
+            ph.ecog = as.factor(ph.ecog), 
+            ph.karno = as.factor(ph.karno), 
+            pat.karno = as.factor(pat.karno))]
+lung<-lung[, `:=`(age = age - mean(age, na.rm = TRUE), 
+            meal.cal = meal.cal - mean(meal.cal, na.rm = TRUE), 
+            wt.loss = wt.loss - mean(wt.loss, na.rm = TRUE))]
+lung %>% str
+
+model <- nltm(Surv(time,status==2) ~ age +  ph.ecog + pat.karno, 
+              data = lung, nlt.model = "PO")
+
+theta_0 <- (1-model$surv)/model$surv
+X <- exp(sum(model$coefficients*c(2, 2, 50)))
+@
+\newpage
+\begin{figure}
+    \centering
+    \subfigure{\includegraphics[width=0.5\textwidth]{1.png}
+    \label{F:przezycie}
+\end{figure}
+\newpage
+\subsection{Zadanie 7 -   hipoteza o proporcjonalnoœci szans}
+W ostatnim zadaniu mamy zweryfikowaæ hipote¿e  o proporcjonalnoœci szans.
+<<test,echo=TRUE,warning=FALSE>>=
+
+model532 <- prop.odds(Event(time, status == 2) ~ sex 
+                      + ph.ecog + pat.karno, data = dane, 
+                      n.sim = 500, profile = 1)
+wald.test(model532)
+@
+Na podstawie uzyskanych danych, korzystaj¹c z testu Walda, na poziomie
+istotnoœci $0.05$ (patrzymy na wartoœci \textsl{pval}) mamy podstawy do odrzucenia hipotezy o proporcjonalnoœci szans w przjêtym przez nas modelu. Poniewa¿ wartoœæ niektórych zmiennych jest mniejsza od przyjêtego poziomu istotnoœci, czyli poni¿ej $0.05$. Widzimy mo¿liwoœæ wyst¹pnienia problemu momentu, a wiêc niektóre zmienne mog¹ wymagaæ naprawy, poniewa¿ istniej¹ wspó³czynniki zale¿ne od czasu.
+\end{document}
